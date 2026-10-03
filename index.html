@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Демі</title>
+<style>
+:root{--bg:#14202b;--fg:#eaf2f7;--mut:#8fa6b5;--acc:#4fd1c5;--rec:#e5484d}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--fg);font:18px/1.45 system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px}
+h1{margin:8px 0 0;font-size:30px}
+#key{width:100%;max-width:420px;padding:10px;border-radius:8px;border:1px solid #2c4152;background:#1c2d3b;color:var(--fg);font-size:16px}
+#btn{width:170px;height:170px;border-radius:50%;border:0;background:var(--acc);color:#07201d;font-size:20px;font-weight:700;cursor:pointer}
+#btn.rec{background:var(--rec);color:#fff;animation:p 1s infinite}
+@keyframes p{50%{box-shadow:0 0 0 18px #e5484d33}}
+#st{color:var(--mut);min-height:26px}
+.box{width:100%;max-width:520px;padding:12px 14px;border-radius:10px;background:#1c2d3b;min-height:54px;white-space:pre-wrap}
+.box b{display:block;color:var(--mut);font-weight:400;font-size:14px}
+</style></head><body>
+<h1>Демі</h1>
+<input id="key" type="password" placeholder="Вставьте Gemini API-ключ">
+<button id="btn">Говорить</button>
+<div id="st">Нажмите кнопку и скажите фразу</div>
+<div class="box"><b>Вы сказали</b><span id="me">—</span></div>
+<div class="box"><b>Демі отвечает</b><span id="bot">—</span></div>
+<script>
+const MODEL="gemini-3.8-flash";
+const SYSTEM="Ты Демі, дружелюбный ИИ-игрок в Minecraft. Отвечай на языке игрока, коротко (до 200 символов), без markdown.";
+const $=id=>document.getElementById(id);
+const keyEl=$("key"),btn=$("btn"),st=$("st");
+try{keyEl.value=localStorage.getItem("k")||""}catch(e){}
+keyEl.onchange=()=>{try{localStorage.setItem("k",keyEl.value.trim())}catch(e){}};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,text="",on=false,hist=[];
+if(!SR){st.textContent="Здесь нет микрофона. Откройте в Google Chrome."}
+btn.onclick=()=>{
+  if(!SR)return;
+  if(!on){
+    if(!keyEl.value.trim()){st.textContent="Сначала вставьте API-ключ";return}
+    if(window.speechSynthesis)speechSynthesis.cancel();
+    rec=new SR();rec.lang="ru-RU";rec.interimResults=true;rec.continuous=false;text="";
+    rec.onresult=e=>{text=[...e.results].map(r=>r[0].transcript).join(" ");$("me").textContent=text};
+    rec.onerror=e=>{st.textContent="Ошибка микрофона: "+e.error};
+    rec.onend=()=>{if(on){on=false;btn.classList.remove("rec");btn.textContent="Говорить";send()}};
+    rec.start();on=true;btn.classList.add("rec");btn.textContent="Запись…";st.textContent="Идёт запись. Говорите";
+  }else{rec.stop()}
+};
+async function send(){
+  if(!text.trim()){st.textContent="Ничего не услышал, попробуйте ещё раз";return}
+  st.textContent="Думаю…";
+  hist.push({role:"user",parts:[{text}]});hist=hist.slice(-12);
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{
+      method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":keyEl.value.trim()},
+      body:JSON.stringify({system_instruction:{parts:[{text:SYSTEM}]},contents:hist,generationConfig:{maxOutputTokens:300}})});
+    const d=await r.json();
+    const a=d.candidates?.[0]?.content?.parts?.map(p=>p.text).join("")||("Ошибка: "+(d.error?.message||r.status));
+    hist.push({role:"model",parts:[{text:a}]});
+    $("bot").textContent=a.trim();st.textContent="Готово";
+    if(window.speechSynthesis){const u=new SpeechSynthesisUtterance(a);u.lang="ru-RU";speechSynthesis.speak(u)}
+  }catch(e){st.textContent="Нет связи: "+e}
+}
+</script></body></html>
